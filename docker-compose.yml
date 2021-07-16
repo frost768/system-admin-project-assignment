@@ -1,0 +1,91 @@
+version: '3.9'
+
+volumes:
+    db-data:
+
+secrets:
+    db-password:
+        file: ./config/db/password.txt
+    site.crt:
+        file: ./config/emrecanminnet_me_chain.crt
+    site.key:
+        file: ./config/emrecanminnet_me_tld.key
+
+services:
+    dns:
+        restart: always
+        image: labbsr0x/dns-bind9
+        ports:
+        - "53:53/udp"
+        - "53:53/tcp"
+        volumes:
+        - ./config/dns/primary:/data
+        
+    frontend:
+        container_name: frontend
+        build: ./app
+        # image: node:14-slim
+        # working_dir: /app
+        # command: sh -c "npm install -g http-server && npm i && npm run build && http-server dist"
+        # environment: 
+        #     - NODE_ENV=production
+        # expose: 
+        #     - 8080
+        # volumes: 
+        #     - ./app/:/app
+
+    api:
+        image: node:14-alpine
+        container_name: api
+        working_dir: /server
+        command: sh -c "npm i && npm start"
+        restart: always
+        # command: sh -c "npm start"
+        expose:
+            - 9000
+        environment:
+            - PORT=9000
+            - DB_NAME=sysadmin
+            - DB_HOST=my_sqldb
+            - DB_USER=root
+            - DB_TABLE=site_log
+
+        depends_on:
+            - my_sqldb
+        secrets:
+            - db-password
+        volumes:
+            - ./server/:/server
+
+    proxy:
+        container_name: proxy
+        image: nginx:1.20.0-alpine
+        command: nginx -g 'daemon off;'
+        ports:
+            - 443:443
+            - 80:80
+        secrets:
+            - site.crt
+            - site.key
+        depends_on:
+            - frontend
+            - api
+            - my_sqldb
+        volumes:
+            - ./config/emrecanminnet_me.conf:/etc/nginx/conf.d/emrecanminnet_me.conf
+
+    my_sqldb:
+        image: mysql:8.0.19
+        container_name: database
+        command: '--default-authentication-plugin=mysql_native_password'
+        restart: always
+        secrets:
+          - db-password
+        environment:
+          - MYSQL_DATABASE=sysadmin
+          - MYSQL_ROOT_PASSWORD_FILE=/run/secrets/db-password
+        expose:
+          - 3306
+        volumes:
+          - db-data:/var/lib/mysql
+          - ./config/db/create_table.sql:/docker-entrypoint-initdb.d/create_table.sql
