@@ -1,0 +1,5 @@
+config/**/*.crt
+config/**/*.private
+config/**/*.key
+config/**/password.txt
+*.zip
